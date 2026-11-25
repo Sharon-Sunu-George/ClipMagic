@@ -144,10 +144,20 @@ class DetectHighlightsPayload(BaseModel):
 
 class ClipExportPayload(BaseModel):
     aspect_ratio: str = "9:16"
+    ratio_w: int = 9
+    ratio_h: int = 16
+    zoom: float = 1.0
+    pan_x: float = 0.0
+    pan_y: float = 0.0
+    bg_mode: str = "black"
+    resolution_p: int = 1080
+    fps: int | None = None
     subtitle_style: str = "clean"
     font_size: int = 58
     caption_color: str = "#FFFFFF"
     caption_position: str = "bottom"
+    caption_x: float = 50.0
+    caption_y: float = 82.0
     enable_subtitles: bool = True
     preview: bool = False
 

@@ -125,10 +125,20 @@ export interface ClipSuggestion {
 
 export interface ClipExportPayload {
   aspect_ratio: string
+  ratio_w?: number
+  ratio_h?: number
+  zoom?: number
+  pan_x?: number
+  pan_y?: number
+  bg_mode?: 'black' | 'blur'
+  resolution_p?: number
+  fps?: number | null
   subtitle_style: string
   font_size: number
   caption_color: string
   caption_position: string
+  caption_x?: number
+  caption_y?: number
   enable_subtitles: boolean
   preview: boolean
 }

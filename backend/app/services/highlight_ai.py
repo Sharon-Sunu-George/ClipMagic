@@ -54,6 +54,13 @@ def parse_and_validate_highlights(
         if end <= start + 3.0:
             continue
 
+        # Enforce minimum duration if video is long enough
+        target_min = min(float(min_seconds), video_duration)
+        if end - start < target_min:
+            end = min(video_duration, start + target_min)
+            if end - start < target_min:
+                start = max(0.0, end - target_min)
+
         # Clamp overly long clips if needed, keeping within video_duration
         if end - start > max_seconds * 1.5:
             end = min(video_duration, start + max_seconds)
@@ -100,9 +107,11 @@ def detect_highlights_with_ollama(
     user_prompt = (
         f"Content category: {category}\n"
         f"Total video duration: {video_duration:.1f} seconds\n"
-        f"Target clip duration: {min_seconds} to {max_seconds} seconds\n\n"
+        f"REQUIRED clip duration: MINIMUM {min_seconds} seconds, MAXIMUM {max_seconds} seconds\n\n"
         "Identify 3 to 6 standalone, engaging clips (strong opinions, surprising facts, "
         "funny/emotional moments, storytelling, or clear educational takeaways). "
+        f"IMPORTANT: Each clip MUST be at least {min_seconds} seconds long (end_time - start_time >= {min_seconds}). "
+        "Combine consecutive transcript segments to form complete, self-contained clips instead of short 5-15s snippets. "
         "Avoid cutting mid-sentence.\n\n"
         'Return JSON in this exact format:\n'
         '{"clips": [{"title": "...", "hook": "...", "start_time": 12.5, "end_time": 45.0, '

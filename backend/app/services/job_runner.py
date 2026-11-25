@@ -335,9 +335,19 @@ def run_export_job(
     job_id: int,
     export_id: int,
     *,
+    ratio_w: int,
+    ratio_h: int,
+    zoom: float,
+    pan_x: float,
+    pan_y: float,
+    bg_mode: str,
+    resolution_p: int,
+    target_fps: int | None,
     font_size: int,
     caption_color: str,
     caption_position: str,
+    caption_x: float,
+    caption_y: float,
     enable_subtitles: bool,
     preview: bool,
 ) -> None:
@@ -367,7 +377,13 @@ def run_export_job(
         db.commit()
         _update_job(db, job_id, status="processing", progress=15.0, message="Preparing export...")
 
-        target_w, target_h = get_target_dimensions(export_row.aspect_ratio, preview=preview)
+        target_w, target_h = get_target_dimensions(
+            export_row.aspect_ratio,
+            preview=preview,
+            ratio_w=ratio_w,
+            ratio_h=ratio_h,
+            short_edge_px=resolution_p,
+        )
         if enable_subtitles:
             transcript = db.scalar(
                 select(Transcript)
@@ -389,6 +405,8 @@ def run_export_job(
                     font_size=font_size,
                     primary_hex=caption_color,
                     position=caption_position,
+                    caption_x=caption_x,
+                    caption_y=caption_y,
                 )
 
         if _is_cancelled(db, job_id):
@@ -405,6 +423,14 @@ def run_export_job(
             start_time=clip.start_time,
             end_time=clip.end_time,
             aspect_ratio=export_row.aspect_ratio,
+            ratio_w=ratio_w,
+            ratio_h=ratio_h,
+            zoom=zoom,
+            pan_x=pan_x,
+            pan_y=pan_y,
+            bg_mode=bg_mode,
+            resolution_p=resolution_p,
+            target_fps=target_fps,
             ass_path=ass_path,
             preview=preview,
             prefer_hw_encoding=app_prefs.prefer_hw_encoding,
@@ -439,19 +465,36 @@ def enqueue_export_job(
     project_id: int,
     clip_id: int,
     aspect_ratio: str,
+    ratio_w: int,
+    ratio_h: int,
+    zoom: float,
+    pan_x: float,
+    pan_y: float,
+    bg_mode: str,
+    resolution_p: int,
+    target_fps: int | None,
     subtitle_style: str,
     font_size: int,
     caption_color: str,
     caption_position: str,
+    caption_x: float,
+    caption_y: float,
     enable_subtitles: bool,
     preview: bool,
 ) -> tuple[Export, Job]:
     """Create Export + Job rows and submit the render job."""
+    import uuid
     db = SessionLocal()
     try:
-        target_w, target_h = get_target_dimensions(aspect_ratio, preview=preview)
+        target_w, target_h = get_target_dimensions(
+            aspect_ratio,
+            preview=preview,
+            ratio_w=ratio_w,
+            ratio_h=ratio_h,
+            short_edge_px=resolution_p,
+        )
         preset = f"{target_w}x{target_h}"
-        filename = f"clip_{clip_id}_{preset}_{subtitle_style}.mp4"
+        filename = f"clip_{clip_id}_{preset}_{subtitle_style}_{uuid.uuid4().hex[:6]}.mp4"
         output_path = (settings.EXPORTS_DIR / filename).resolve()
 
         export_row = Export(
@@ -482,9 +525,19 @@ def enqueue_export_job(
             run_export_job,
             job.id,
             export_row.id,
+            ratio_w=ratio_w,
+            ratio_h=ratio_h,
+            zoom=zoom,
+            pan_x=pan_x,
+            pan_y=pan_y,
+            bg_mode=bg_mode,
+            resolution_p=resolution_p,
+            target_fps=target_fps,
             font_size=font_size,
             caption_color=caption_color,
             caption_position=caption_position,
+            caption_x=caption_x,
+            caption_y=caption_y,
             enable_subtitles=enable_subtitles,
             preview=preview,
         )

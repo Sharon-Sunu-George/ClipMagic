@@ -95,6 +95,9 @@ export function ExportsPage() {
                   Subtitles: {exp.subtitle_style} · {exp.duration ? `${exp.duration}s` : '—'} ·{' '}
                   {formatBytes(exp.file_size)}
                 </div>
+                <div className="mt-1 truncate max-w-xl font-mono text-xs text-zinc-500" title={exp.output_path}>
+                  Saved: {exp.output_path}
+                </div>
               </div>
               <div className="flex items-center gap-2.5">
                 <span
@@ -118,6 +121,14 @@ export function ExportsPage() {
                       <Play className="h-4 w-4" />
                       Preview
                     </button>
+                    <a
+                      href={`/api/exports/${exp.id}/video`}
+                      download={`clipmagic_export_${exp.id}_${exp.preset}.mp4`}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-950 hover:bg-white"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download
+                    </a>
                     <button
                       type="button"
                       onClick={() => api.openExportFolder(exp.id)}

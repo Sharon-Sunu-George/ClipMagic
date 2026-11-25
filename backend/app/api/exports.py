@@ -28,10 +28,20 @@ def export_clip(
         project_id=clip.project_id,
         clip_id=clip.id,
         aspect_ratio=payload.aspect_ratio,
+        ratio_w=payload.ratio_w,
+        ratio_h=payload.ratio_h,
+        zoom=payload.zoom,
+        pan_x=payload.pan_x,
+        pan_y=payload.pan_y,
+        bg_mode=payload.bg_mode,
+        resolution_p=payload.resolution_p,
+        target_fps=payload.fps,
         subtitle_style=payload.subtitle_style,
         font_size=payload.font_size,
         caption_color=payload.caption_color,
         caption_position=payload.caption_position,
+        caption_x=payload.caption_x,
+        caption_y=payload.caption_y,
         enable_subtitles=payload.enable_subtitles,
         preview=payload.preview,
     )
@@ -65,7 +75,7 @@ def open_export_folder(export_id: int, db: Session = Depends(get_db)) -> dict[st
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export not found")
     target = Path(exp.output_path).resolve()
     if target.is_file():
-        subprocess.Popen(["explorer.exe", f"/select,{target}"])
+        subprocess.Popen(["explorer.exe", "/select,", str(target)])
     else:
         subprocess.Popen(["explorer.exe", str(settings.EXPORTS_DIR.resolve())])
     return {"status": "opened"}

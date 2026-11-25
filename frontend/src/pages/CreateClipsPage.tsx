@@ -6,16 +6,21 @@ import {
   Captions,
   Check,
   CheckCircle2,
+  Copy,
   Crop,
   Download,
   Film,
   Loader2,
   MessageSquareText,
+  Pause,
   Play,
   Plus,
+  Repeat,
   Scissors,
   Trash2,
   Upload,
+  Volume2,
+  VolumeX,
   X,
   XCircle,
 } from 'lucide-react'
@@ -90,13 +95,45 @@ export function CreateClipsPage() {
   const [editorTab, setEditorTab] = useState<EditorTab>('trim')
   const [editStart, setEditStart] = useState(0)
   const [editEnd, setEditEnd] = useState(30)
-  const [aspectRatio, setAspectRatio] = useState('9:16')
+  const [ratioPreset, setRatioPreset] = useState<'9:16' | '16:9' | '1:1' | '4:5' | 'custom'>('9:16')
+  const [ratioW, setRatioW] = useState(9)
+  const [ratioH, setRatioH] = useState(16)
+  const [zoom, setZoom] = useState(1.0)
+  const [panX, setPanX] = useState(0)
+  const [panY, setPanY] = useState(0)
+  const [bgMode, setBgMode] = useState<'black' | 'blur'>('black')
   const [subtitleStyle, setSubtitleStyle] = useState('clean')
   const [fontSize, setFontSize] = useState(58)
   const [captionColor, setCaptionColor] = useState('#FFFFFF')
   const [captionPosition, setCaptionPosition] = useState('bottom')
+  const [captionX, setCaptionX] = useState(50)
+  const [captionY, setCaptionY] = useState(82)
   const [enableSubtitles, setEnableSubtitles] = useState(true)
   const [previewRender, setPreviewRender] = useState(false)
+  const [exportResolutionP, setExportResolutionP] = useState(1080)
+  const [exportFps, setExportFps] = useState<number | null>(null)
+  const [loopClip, setLoopClip] = useState(true)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+  const [previewingClip, setPreviewingClip] = useState<ClipSuggestion | null>(null)
+  const [batchProgress, setBatchProgress] = useState<string | null>(null)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [draggingHandle, setDraggingHandle] = useState<'start' | 'end' | null>(null)
+  const trimTrackRef = useRef<HTMLDivElement>(null)
+  const frameBoxRef = useRef<HTMLDivElement>(null)
+  const blurVideoRef = useRef<HTMLVideoElement>(null)
+  const dragFramingRef = useRef<{
+    startX: number
+    startY: number
+    origPanX: number
+    origPanY: number
+  } | null>(null)
+  const dragCaptionRef = useRef<{
+    startX: number
+    startY: number
+    origCapX: number
+    origCapY: number
+  } | null>(null)
 
   const [showJobBanner, setShowJobBanner] = useState(false)
   const [toast, setToast] = useState<{ id: number; title: string; subtitle: string } | null>(null)
@@ -176,6 +213,17 @@ export function CreateClipsPage() {
     [clips],
   )
 
+  const approvedClips = useMemo(
+    () => sortedClips.filter((c) => c.status === 'approved'),
+    [sortedClips],
+  )
+
+  const activeBounds = useMemo(() => {
+    if (editingClip) return { start: editStart, end: editEnd }
+    if (previewingClip) return { start: previewingClip.start_time, end: previewingClip.end_time }
+    return null
+  }, [editingClip, editStart, editEnd, previewingClip])
+
   const activeCaption = useMemo(() => {
     if (!enableSubtitles || segments.length === 0) return ''
     const seg = segments.find((s) => currentTime >= s.start && currentTime <= s.end)
@@ -238,6 +286,91 @@ export function CreateClipsPage() {
     v.currentTime = Math.max(0, seconds)
     if (autoplay) {
       v.play().catch(() => { })
+    }
+  }
+
+  const handleVideoTimeUpdate = (time: number) => {
+    setCurrentTime(time)
+    if (!activeBounds) return
+    const v = videoRef.current
+    if (!v) return
+    if (time >= activeBounds.end) {
+      if (loopClip) {
+        v.currentTime = activeBounds.start
+        if (v.paused) {
+          v.play().catch(() => { })
+        }
+      } else if (!v.paused) {
+        v.pause()
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!activeBounds) return
+    let rafId = 0
+    const tick = () => {
+      const v = videoRef.current
+      if (v && !v.paused && !v.ended) {
+        setCurrentTime(v.currentTime)
+        if (v.currentTime >= activeBounds.end) {
+          if (loopClip) {
+            v.currentTime = activeBounds.start
+          } else {
+            v.pause()
+          }
+        }
+      }
+      rafId = window.requestAnimationFrame(tick)
+    }
+    rafId = window.requestAnimationFrame(tick)
+    return () => window.cancelAnimationFrame(rafId)
+  }, [activeBounds, loopClip])
+
+  const projectDuration = project?.duration && project.duration > 0 ? project.duration : Math.max(editEnd, 60)
+
+  const updateEditStart = (next: number) => {
+    const clamped = Math.max(0, Math.min(next, editEnd - 1))
+    setEditStart(Number(clamped.toFixed(1)))
+  }
+
+  const updateEditEnd = (next: number) => {
+    const clamped = Math.min(projectDuration, Math.max(next, editStart + 1))
+    setEditEnd(Number(clamped.toFixed(1)))
+  }
+
+  useEffect(() => {
+    if (!draggingHandle) return
+    const onMove = (e: MouseEvent) => {
+      const track = trimTrackRef.current
+      if (!track) return
+      const rect = track.getBoundingClientRect()
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+      const t = ratio * projectDuration
+      if (draggingHandle === 'start') {
+        updateEditStart(t)
+      } else {
+        updateEditEnd(t)
+      }
+    }
+    const onUp = () => setDraggingHandle(null)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [draggingHandle, projectDuration, editStart, editEnd])
+
+  const handleCopyText = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedKey(key)
+      window.setTimeout(() => {
+        setCopiedKey((prev) => (prev === key ? null : prev))
+      }, 2000)
+    } catch {
+      // ignore clipboard errors
     }
   }
 
@@ -350,11 +483,29 @@ export function CreateClipsPage() {
     setJob(updated)
   }
 
+  const applyRecommendedFraming = () => {
+    setRatioPreset('9:16')
+    setRatioW(9)
+    setRatioH(16)
+    const isLandscape = (project?.width ?? 16) > (project?.height ?? 9)
+    if (isLandscape) {
+      setBgMode('blur')
+      setZoom(1.35)
+    } else {
+      setBgMode('black')
+      setZoom(1.0)
+    }
+    setPanX(0)
+    setPanY(0)
+  }
+
   const openEditor = (clip: ClipSuggestion) => {
     setEditingClip(clip)
     setEditorTab('trim')
     setEditStart(clip.start_time)
     setEditEnd(clip.end_time)
+    setIsPlaying(false)
+    applyRecommendedFraming()
     window.setTimeout(() => seekTo(clip.start_time, false), 50)
   }
 
@@ -374,11 +525,21 @@ export function CreateClipsPage() {
     try {
       await handleSaveTrim()
       const res = await api.exportClip(editingClip.id, {
-        aspect_ratio: aspectRatio,
+        aspect_ratio: ratioPreset === 'custom' ? `${ratioW}:${ratioH}` : ratioPreset,
+        ratio_w: ratioW,
+        ratio_h: ratioH,
+        zoom,
+        pan_x: panX,
+        pan_y: panY,
+        bg_mode: bgMode,
+        resolution_p: exportResolutionP,
+        fps: exportFps,
         subtitle_style: subtitleStyle,
         font_size: fontSize,
         caption_color: captionColor,
         caption_position: captionPosition,
+        caption_x: captionX,
+        caption_y: captionY,
         enable_subtitles: enableSubtitles,
         preview: previewRender,
       })
@@ -387,6 +548,60 @@ export function CreateClipsPage() {
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start export')
+    }
+  }
+
+  const waitForJobCompletion = (jobId: number): Promise<JobItem> =>
+    new Promise((resolve, reject) => {
+      api.subscribeToJob(
+        jobId,
+        (updated) => {
+          setJob(updated)
+          if (updated.status === 'completed') resolve(updated)
+          else if (updated.status === 'failed' || updated.status === 'cancelled') {
+            reject(new Error(updated.error_message || `Job ${updated.status}`))
+          }
+        },
+        () => reject(new Error('Lost connection to export stream')),
+      )
+    })
+
+  const handleBatchExport = async () => {
+    if (approvedClips.length === 0 || batchProgress) return
+    setError(null)
+    let exportedCount = 0
+    try {
+      for (let i = 0; i < approvedClips.length; i += 1) {
+        const clip = approvedClips[i]
+        setBatchProgress(`Exporting ${i + 1}/${approvedClips.length}...`)
+        const res = await api.exportClip(clip.id, {
+          aspect_ratio: ratioPreset === 'custom' ? `${ratioW}:${ratioH}` : ratioPreset,
+          ratio_w: ratioW,
+          ratio_h: ratioH,
+          zoom,
+          pan_x: panX,
+          pan_y: panY,
+          bg_mode: bgMode,
+          resolution_p: exportResolutionP,
+          fps: exportFps,
+          subtitle_style: subtitleStyle,
+          font_size: fontSize,
+          caption_color: captionColor,
+          caption_position: captionPosition,
+          caption_x: captionX,
+          caption_y: captionY,
+          enable_subtitles: enableSubtitles,
+          preview: previewRender,
+        })
+        setJob(res.job)
+        await waitForJobCompletion(res.job.id)
+        exportedCount += 1
+      }
+      showToast('Batch export complete', `${exportedCount} approved clip(s) rendered to Exports.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Batch export failed')
+    } finally {
+      setBatchProgress(null)
     }
   }
 
@@ -513,19 +728,22 @@ export function CreateClipsPage() {
 
   // STAGE 3: 3-COLUMN OPUSCLIP / KLAP CLIP EDITOR
   if (editingClip) {
-    const previewContainerClass =
-      aspectRatio === '9:16'
-        ? 'aspect-[9/16] max-h-[540px]'
-        : aspectRatio === '1:1'
-          ? 'aspect-square max-h-[480px]'
-          : 'aspect-video w-full max-w-xl'
-
-    const captionPosClass =
-      captionPosition === 'top'
-        ? 'top-8'
-        : captionPosition === 'middle'
-          ? 'top-1/2 -translate-y-1/2'
-          : 'bottom-14'
+    const selectRatioPreset = (preset: '9:16' | '16:9' | '1:1' | '4:5' | 'custom') => {
+      setRatioPreset(preset)
+      if (preset === '9:16') {
+        setRatioW(9)
+        setRatioH(16)
+      } else if (preset === '16:9') {
+        setRatioW(16)
+        setRatioH(9)
+      } else if (preset === '1:1') {
+        setRatioW(1)
+        setRatioH(1)
+      } else if (preset === '4:5') {
+        setRatioW(4)
+        setRatioH(5)
+      }
+    }
 
     return (
       <div className="flex h-full flex-col bg-[#09090b]">
@@ -575,9 +793,9 @@ export function CreateClipsPage() {
           </div>
         )}
 
-        <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-12">
+        <div className="grid flex-1 min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-12">
           {/* Left Panel: Tabbed Toolset */}
-          <div className="flex flex-col border-r border-zinc-800 bg-[#111113] lg:col-span-3">
+          <div className="flex min-h-0 flex-col border-r border-zinc-800 bg-[#111113] lg:col-span-3">
             <div className="grid grid-cols-4 border-b border-zinc-800">
               {[
                 { id: 'trim', label: 'Trim', icon: Scissors },
@@ -607,61 +825,272 @@ export function CreateClipsPage() {
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
               {editorTab === 'trim' && (
                 <div className="space-y-4">
-                  <h2 className="text-sm font-semibold text-zinc-200">Clip Boundaries</h2>
-                  <div>
-                    <label className="block text-sm text-zinc-400">Start Time (seconds)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min={0}
-                      value={editStart}
-                      onChange={(e) => setEditStart(Number(e.target.value))}
-                      className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-[#09090b] px-3.5 py-2.5 text-base text-zinc-100"
-                    />
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-zinc-200">Clip Boundaries</h2>
+                    <label className="inline-flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={loopClip}
+                        onChange={(e) => setLoopClip(e.target.checked)}
+                        className="h-3.5 w-3.5 accent-zinc-100"
+                      />
+                      <Repeat className="h-3.5 w-3.5 text-zinc-400" />
+                      Loop Clip
+                    </label>
                   </div>
-                  <div>
-                    <label className="block text-sm text-zinc-400">End Time (seconds)</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min={1}
-                      value={editEnd}
-                      onChange={(e) => setEditEnd(Number(e.target.value))}
-                      className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-[#09090b] px-3.5 py-2.5 text-base text-zinc-100"
-                    />
+
+                  {/* Dual-Thumb Visual Trim Scrubber */}
+                  <div className="space-y-2">
+                    <div
+                      ref={trimTrackRef}
+                      onClick={(e) => {
+                        if (draggingHandle) return
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+                        seekTo(ratio * projectDuration, false)
+                      }}
+                      className="relative h-9 cursor-pointer select-none rounded-md border border-zinc-800 bg-zinc-900"
+                    >
+                      {/* Selected Window */}
+                      <div
+                        className="absolute inset-y-0 border-y border-zinc-200/70 bg-zinc-100/15"
+                        style={{
+                          left: `${(editStart / projectDuration) * 100}%`,
+                          width: `${Math.max(1, ((editEnd - editStart) / projectDuration) * 100)}%`,
+                        }}
+                      />
+                      {/* Playhead Marker */}
+                      <div
+                        className="pointer-events-none absolute inset-y-0 w-0.5 bg-zinc-50"
+                        style={{
+                          left: `${Math.max(0, Math.min(100, (currentTime / projectDuration) * 100))}%`,
+                        }}
+                      />
+                      {/* Left Handle */}
+                      <button
+                        type="button"
+                        aria-label="Trim start handle"
+                        onMouseDown={(e) => {
+                          e.stopPropagation()
+                          setDraggingHandle('start')
+                        }}
+                        className="absolute top-1/2 h-6 w-2.5 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-sm bg-zinc-100 shadow hover:bg-white"
+                        style={{ left: `${(editStart / projectDuration) * 100}%` }}
+                      />
+                      {/* Right Handle */}
+                      <button
+                        type="button"
+                        aria-label="Trim end handle"
+                        onMouseDown={(e) => {
+                          e.stopPropagation()
+                          setDraggingHandle('end')
+                        }}
+                        className="absolute top-1/2 h-6 w-2.5 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-sm bg-zinc-100 shadow hover:bg-white"
+                        style={{ left: `${(editEnd / projectDuration) * 100}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between font-mono text-[11px] text-zinc-500">
+                      <span>0:00</span>
+                      <span>Playhead {formatDuration(currentTime)}</span>
+                      <span>{formatDuration(projectDuration)}</span>
+                    </div>
                   </div>
+
+                  {/* Start Time + Nudge + Set In */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm text-zinc-400">Start (s)</label>
+                      <button
+                        type="button"
+                        onClick={() => updateEditStart(videoRef.current?.currentTime ?? currentTime)}
+                        className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-100 hover:bg-zinc-700"
+                      >
+                        Set In
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => updateEditStart(editStart - 0.5)}
+                        className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs font-mono text-zinc-200 hover:bg-zinc-800"
+                      >
+                        -0.5s
+                      </button>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min={0}
+                        value={editStart}
+                        onChange={(e) => updateEditStart(Number(e.target.value))}
+                        className="w-full rounded-md border border-zinc-700 bg-[#09090b] px-3 py-2 text-sm text-zinc-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateEditStart(editStart + 0.5)}
+                        className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs font-mono text-zinc-200 hover:bg-zinc-800"
+                      >
+                        +0.5s
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* End Time + Nudge + Set Out */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm text-zinc-400">End (s)</label>
+                      <button
+                        type="button"
+                        onClick={() => updateEditEnd(videoRef.current?.currentTime ?? currentTime)}
+                        className="rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-100 hover:bg-zinc-700"
+                      >
+                        Set Out
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => updateEditEnd(editEnd - 0.5)}
+                        className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs font-mono text-zinc-200 hover:bg-zinc-800"
+                      >
+                        -0.5s
+                      </button>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min={1}
+                        value={editEnd}
+                        onChange={(e) => updateEditEnd(Number(e.target.value))}
+                        className="w-full rounded-md border border-zinc-700 bg-[#09090b] px-3 py-2 text-sm text-zinc-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateEditEnd(editEnd + 0.5)}
+                        className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs font-mono text-zinc-200 hover:bg-zinc-800"
+                      >
+                        +0.5s
+                      </button>
+                    </div>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => seekTo(editStart, true)}
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-800"
                   >
                     <Play className="h-4 w-4" />
-                    Preview from Start
+                    Preview Clip Window
                   </button>
                 </div>
               )}
 
               {editorTab === 'ratio' && (
-                <div className="space-y-3">
-                  <h2 className="text-sm font-semibold text-zinc-200">Output Aspect Ratio</h2>
-                  {[
-                    { value: '9:16', label: '9:16 Vertical', desc: '1080×1920 · Shorts, Reels, TikTok' },
-                    { value: '1:1', label: '1:1 Square', desc: '1080×1080 · LinkedIn, Instagram Feed' },
-                    { value: '16:9', label: '16:9 Landscape', desc: '1920×1080 · YouTube Standard' },
-                  ].map((opt) => (
+                <div className="space-y-5">
+                  <div className="space-y-2.5">
+                    <h2 className="text-sm font-semibold text-zinc-200">Aspect Ratio</h2>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['9:16', '16:9', '1:1', '4:5', 'custom'] as const).map((preset) => {
+                        const active = ratioPreset === preset
+                        return (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => selectRatioPreset(preset)}
+                            className={`rounded-md border px-2.5 py-2 text-xs font-medium capitalize transition ${
+                              active
+                                ? 'border-zinc-100 bg-zinc-100 text-zinc-950'
+                                : 'border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {ratioPreset === 'custom' && (
+                      <div className="grid grid-cols-2 gap-2.5 pt-1">
+                        <div>
+                          <label className="block text-xs text-zinc-400">Width (W)</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={64}
+                            value={ratioW}
+                            onChange={(e) => {
+                              const w = Math.max(1, Number(e.target.value) || 1)
+                              setRatioW(w)
+                            }}
+                            className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-zinc-400">Height (H)</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={64}
+                            value={ratioH}
+                            onChange={(e) => {
+                              const h = Math.max(1, Number(e.target.value) || 1)
+                              setRatioH(h)
+                            }}
+                            className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <h2 className="text-sm font-semibold text-zinc-200">Background Fill</h2>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['black', 'blur'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setBgMode(mode)}
+                          className={`rounded-md border px-3 py-2 text-xs font-medium capitalize transition ${
+                            bgMode === mode
+                              ? 'border-zinc-100 bg-zinc-100 text-zinc-950'
+                              : 'border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700'
+                          }`}
+                        >
+                          {mode === 'black' ? 'Solid Black' : 'Blurred Video'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-semibold text-zinc-200">Zoom</span>
+                      <span className="font-mono text-xs text-zinc-400">{Math.round(zoom * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={3.0}
+                      step={0.05}
+                      value={zoom}
+                      onChange={(e) => setZoom(Number(e.target.value))}
+                      className="w-full accent-zinc-100"
+                    />
+                    <div className="flex items-center justify-between text-xs text-zinc-500">
+                      <span>Pan X: {panX.toFixed(0)}%</span>
+                      <span>Pan Y: {panY.toFixed(0)}%</span>
+                    </div>
                     <button
-                      key={opt.value}
                       type="button"
-                      onClick={() => setAspectRatio(opt.value)}
-                      className={`w-full rounded-xl border p-3.5 text-left transition-colors ${aspectRatio === opt.value
-                        ? 'border-zinc-100 bg-zinc-100/10'
-                        : 'border-zinc-800 bg-[#09090b] hover:border-zinc-700'
-                        }`}
+                      onClick={() => {
+                        setZoom(1.0)
+                        setPanX(0)
+                        setPanY(0)
+                      }}
+                      className="w-full rounded-md border border-zinc-800 bg-zinc-900 py-2 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
                     >
-                      <div className="text-sm font-semibold text-zinc-100">{opt.label}</div>
-                      <div className="mt-0.5 text-xs text-zinc-400">{opt.desc}</div>
+                      Reset Framing
                     </button>
-                  ))}
+                  </div>
                 </div>
               )}
 
@@ -692,16 +1121,58 @@ export function CreateClipsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-zinc-400">Position</label>
-                    <select
-                      value={captionPosition}
-                      onChange={(e) => setCaptionPosition(e.target.value)}
-                      className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-[#09090b] px-3.5 py-2.5 text-sm text-zinc-100"
-                    >
-                      <option value="bottom">Bottom</option>
-                      <option value="middle">Middle</option>
-                      <option value="top">Top</option>
-                    </select>
+                    <label className="block text-sm text-zinc-400">Position Preset</label>
+                    <div className="mt-1.5 grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'top', label: 'Top', y: 15 },
+                        { id: 'middle', label: 'Middle', y: 50 },
+                        { id: 'bottom', label: 'Bottom', y: 82 },
+                      ].map((pos) => (
+                        <button
+                          key={pos.id}
+                          type="button"
+                          onClick={() => {
+                            setCaptionPosition(pos.id)
+                            setCaptionX(50)
+                            setCaptionY(pos.y)
+                          }}
+                          className={`rounded-md border py-2 text-xs font-medium transition ${
+                            captionPosition === pos.id
+                              ? 'border-zinc-100 bg-zinc-100 text-zinc-950'
+                              : 'border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700'
+                          }`}
+                        >
+                          {pos.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs text-zinc-400">
+                      <span>Horizontal (X)</span>
+                      <span className="font-mono">{captionX.toFixed(0)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={10}
+                      max={90}
+                      value={captionX}
+                      onChange={(e) => setCaptionX(Number(e.target.value))}
+                      className="w-full accent-zinc-100"
+                    />
+                    <div className="flex justify-between text-xs text-zinc-400">
+                      <span>Vertical (Y)</span>
+                      <span className="font-mono">{captionY.toFixed(0)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={10}
+                      max={90}
+                      value={captionY}
+                      onChange={(e) => setCaptionY(Number(e.target.value))}
+                      className="w-full accent-zinc-100"
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -732,6 +1203,35 @@ export function CreateClipsPage() {
               {editorTab === 'export' && (
                 <div className="space-y-4">
                   <h2 className="text-sm font-semibold text-zinc-200">Render Options</h2>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400">Resolution</label>
+                    <select
+                      value={exportResolutionP}
+                      onChange={(e) => setExportResolutionP(Number(e.target.value))}
+                      className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-[#09090b] px-3.5 py-2.5 text-sm text-zinc-100"
+                    >
+                      <option value={480}>480p (SD)</option>
+                      <option value={720}>720p (HD)</option>
+                      <option value={1080}>1080p (Full HD)</option>
+                      <option value={1440}>1440p (2K)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400">Frame Rate (FPS)</label>
+                    <select
+                      value={exportFps ?? ''}
+                      onChange={(e) => setExportFps(e.target.value ? Number(e.target.value) : null)}
+                      className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-[#09090b] px-3.5 py-2.5 text-sm text-zinc-100"
+                    >
+                      <option value="">Source FPS ({project.fps ? `${project.fps} fps` : 'Auto'})</option>
+                      <option value={24}>24 fps (Cinema)</option>
+                      <option value={30}>30 fps (Standard)</option>
+                      <option value={60}>60 fps (Smooth)</option>
+                    </select>
+                  </div>
+
                   <label className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-[#09090b] p-3.5 text-sm text-zinc-200">
                     <input
                       type="checkbox"
@@ -754,33 +1254,165 @@ export function CreateClipsPage() {
             </div>
           </div>
 
-          {/* Center Panel: Live 9:16 / 1:1 / 16:9 Canvas */}
-          <div className="flex flex-col items-center justify-center bg-[#09090b] p-6 lg:col-span-5">
-            <div className={`relative overflow-hidden rounded-2xl border border-zinc-800 bg-black shadow-2xl ${previewContainerClass}`}>
+          {/* Center Panel: Live Framing & Aspect Ratio Canvas */}
+          <div className="flex min-h-0 flex-col items-center justify-center overflow-hidden bg-[#09090b] p-4 lg:col-span-5">
+            <div
+              ref={frameBoxRef}
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId)
+                dragFramingRef.current = {
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  origPanX: panX,
+                  origPanY: panY,
+                }
+              }}
+              onPointerMove={(e) => {
+                if (dragCaptionRef.current && frameBoxRef.current) {
+                  const rect = frameBoxRef.current.getBoundingClientRect()
+                  const dxPct = ((e.clientX - dragCaptionRef.current.startX) / rect.width) * 100
+                  const dyPct = ((e.clientY - dragCaptionRef.current.startY) / rect.height) * 100
+                  setCaptionX(Math.max(10, Math.min(90, Number((dragCaptionRef.current.origCapX + dxPct).toFixed(1)))))
+                  setCaptionY(Math.max(10, Math.min(90, Number((dragCaptionRef.current.origCapY + dyPct).toFixed(1)))))
+                  return
+                }
+                if (!dragFramingRef.current || !frameBoxRef.current) return
+                const rect = frameBoxRef.current.getBoundingClientRect()
+                const dxPct = ((e.clientX - dragFramingRef.current.startX) / rect.width) * 100
+                const dyPct = ((e.clientY - dragFramingRef.current.startY) / rect.height) * 100
+                setPanX(Math.max(-100, Math.min(100, Number((dragFramingRef.current.origPanX + dxPct).toFixed(1)))))
+                setPanY(Math.max(-100, Math.min(100, Number((dragFramingRef.current.origPanY + dyPct).toFixed(1)))))
+              }}
+              onPointerUp={() => {
+                dragFramingRef.current = null
+                dragCaptionRef.current = null
+              }}
+              onWheel={(e) => {
+                e.preventDefault()
+                const delta = e.deltaY < 0 ? 0.08 : -0.08
+                setZoom((z) => Math.max(0.5, Math.min(3.0, Number((z + delta).toFixed(2)))))
+              }}
+              style={{ aspectRatio: `${ratioW} / ${ratioH}` }}
+              className="relative h-full max-h-[calc(100vh-210px)] max-w-full cursor-grab active:cursor-grabbing overflow-hidden rounded-2xl border border-zinc-800 bg-black shadow-2xl select-none"
+            >
+              {bgMode === 'blur' && (
+                <video
+                  ref={blurVideoRef}
+                  src={`/api/projects/${project.id}/video`}
+                  muted
+                  playsInline
+                  className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-75 blur-2xl"
+                />
+              )}
               <video
                 ref={videoRef}
-                key={project.id}
+                key={`editor-${project.id}-${editingClip.id}`}
                 src={`/api/projects/${project.id}/video`}
-                controls
-                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-                className="h-full w-full object-cover"
+                muted={isMuted}
+                playsInline
+                preload="auto"
+                onLoadedMetadata={(e) => {
+                  e.currentTarget.currentTime = editStart
+                  if (blurVideoRef.current) blurVideoRef.current.currentTime = editStart
+                }}
+                onPlay={() => {
+                  setIsPlaying(true)
+                  blurVideoRef.current?.play().catch(() => { })
+                }}
+                onPause={() => {
+                  setIsPlaying(false)
+                  blurVideoRef.current?.pause()
+                }}
+                onSeeked={(e) => {
+                  if (blurVideoRef.current) blurVideoRef.current.currentTime = e.currentTarget.currentTime
+                }}
+                onTimeUpdate={(e) => handleVideoTimeUpdate(e.currentTarget.currentTime)}
+                style={{ transform: `translate(${panX}%, ${panY}%) scale(${zoom})` }}
+                className="relative z-10 h-full w-full object-contain transition-transform duration-75 pointer-events-none"
               />
               {enableSubtitles && activeCaption && (
                 <div
-                  className={`pointer-events-none absolute inset-x-4 text-center px-3 py-1.5 font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] ${captionPosClass}`}
-                  style={{ color: captionColor, fontSize: `${Math.max(14, Math.round(fontSize * 0.34))}px` }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    frameBoxRef.current?.setPointerCapture(e.pointerId)
+                    dragCaptionRef.current = {
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      origCapX: captionX,
+                      origCapY: captionY,
+                    }
+                  }}
+                  title="Drag to move caption"
+                  className="absolute z-20 max-w-[88%] -translate-x-1/2 -translate-y-1/2 cursor-move select-none px-2 py-1 text-center font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] hover:ring-1 hover:ring-zinc-400/60 rounded"
+                  style={{
+                    left: `${captionX}%`,
+                    top: `${captionY}%`,
+                    color: captionColor,
+                    fontSize: `${Math.max(10, Math.round(((frameBoxRef.current?.clientHeight ?? 480) * fontSize) / 1920))}px`,
+                  }}
                 >
                   {activeCaption}
                 </div>
               )}
             </div>
-            <div className="mt-3 text-xs text-zinc-500">
-              Previewing {aspectRatio} · Centre-cropped on export
+
+            {/* Fixed Transport Controls Bar (never moves with video pan/zoom) */}
+            <div className="mt-3 flex w-full max-w-md items-center gap-3 rounded-lg border border-zinc-800 bg-[#111113] px-3.5 py-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const v = videoRef.current
+                  if (!v) return
+                  if (v.paused) {
+                    if (v.currentTime < editStart || v.currentTime >= editEnd) {
+                      v.currentTime = editStart
+                    }
+                    v.play().catch(() => { })
+                  } else {
+                    v.pause()
+                  }
+                }}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white"
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+              </button>
+
+              <span className="shrink-0 font-mono text-xs text-zinc-300">
+                {formatDuration(currentTime)}
+              </span>
+
+              <input
+                type="range"
+                min={editStart}
+                max={Math.max(editStart + 0.5, editEnd)}
+                step={0.1}
+                value={Math.max(editStart, Math.min(editEnd, currentTime))}
+                onChange={(e) => seekTo(Number(e.target.value), false)}
+                className="w-full accent-zinc-100 cursor-pointer"
+              />
+
+              <span className="shrink-0 font-mono text-xs text-zinc-500">
+                {formatDuration(editEnd)}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setIsMuted((m) => !m)}
+                className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                aria-label={isMuted ? 'Unmute' : 'Mute'}
+              >
+                {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
+            </div>
+
+            <div className="mt-2 text-xs text-zinc-500">
+              {ratioW}:{ratioH} · Drag video to reframe · Scroll or slide to zoom ({Math.round(zoom * 100)}%)
             </div>
           </div>
 
           {/* Right Panel: Interactive Transcript */}
-          <div className="flex flex-col border-l border-zinc-800 bg-[#111113] lg:col-span-4">
+          <div className="flex min-h-0 flex-col border-l border-zinc-800 bg-[#111113] lg:col-span-4">
             <div className="border-b border-zinc-800 px-5 py-4">
               <h2 className="text-base font-semibold text-zinc-100">Transcript</h2>
               <p className="text-xs text-zinc-400">Click any line to jump the playhead</p>
@@ -831,7 +1463,29 @@ export function CreateClipsPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={approvedClips.length === 0 || Boolean(batchProgress)}
+            onClick={handleBatchExport}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              approvedClips.length > 0 && !batchProgress
+                ? 'bg-zinc-100 text-zinc-950 hover:bg-white'
+                : 'border border-zinc-800 bg-zinc-900 text-zinc-500 cursor-not-allowed'
+            }`}
+          >
+            {batchProgress ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {batchProgress}
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Export All Approved ({approvedClips.length})
+              </>
+            )}
+          </button>
           <button
             type="button"
             onClick={() => resetStudio('/projects')}
@@ -1096,11 +1750,67 @@ export function CreateClipsPage() {
 
                   <p className="text-sm text-zinc-300 leading-relaxed">{clip.reason}</p>
 
+                  {(clip.hook || clip.caption) && (
+                    <div className="space-y-2 rounded-lg border border-zinc-800 bg-[#09090b] p-3 text-xs">
+                      {clip.hook && (
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-medium text-zinc-400">Hook: </span>
+                            <span className="text-zinc-200">{clip.hook}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(`hook-${clip.id}`, clip.hook!)}
+                            className="inline-flex shrink-0 items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-200 hover:bg-zinc-800"
+                          >
+                            {copiedKey === `hook-${clip.id}` ? (
+                              <>
+                                <Check className="h-3 w-3" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3 w-3" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                      {clip.caption && (
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-medium text-zinc-400">Caption: </span>
+                            <span className="text-zinc-200">{clip.caption}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(`cap-${clip.id}`, clip.caption!)}
+                            className="inline-flex shrink-0 items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-200 hover:bg-zinc-800"
+                          >
+                            {copiedKey === `cap-${clip.id}` ? (
+                              <>
+                                <Check className="h-3 w-3" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3 w-3" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap items-center gap-2.5 pt-1">
                     <button
                       type="button"
                       onClick={() => {
                         setRightTab('player')
+                        setPreviewingClip(clip)
                         seekTo(clip.start_time)
                       }}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3.5 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
@@ -1172,14 +1882,44 @@ export function CreateClipsPage() {
               </div>
 
               {rightTab === 'player' ? (
-                <div className="bg-black">
-                  <video
-                    ref={videoRef}
-                    key={project.id}
-                    src={`/api/projects/${project.id}/video`}
-                    controls
-                    className="aspect-video max-h-[460px] w-full"
-                  />
+                <div>
+                  <div className="bg-black">
+                    <video
+                      ref={videoRef}
+                      key={project.id}
+                      src={`/api/projects/${project.id}/video`}
+                      controls
+                      onTimeUpdate={(e) => handleVideoTimeUpdate(e.currentTarget.currentTime)}
+                      className="aspect-video max-h-[460px] w-full"
+                    />
+                  </div>
+                  {previewingClip && (
+                    <div className="flex items-center justify-between border-t border-zinc-800 px-4 py-2.5 text-xs text-zinc-400">
+                      <span className="truncate">
+                        Previewing: <span className="text-zinc-200">{previewingClip.title}</span> (
+                        {formatDuration(previewingClip.start_time)} –{' '}
+                        {formatDuration(previewingClip.end_time)})
+                      </span>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={loopClip}
+                            onChange={(e) => setLoopClip(e.target.checked)}
+                            className="h-3.5 w-3.5 accent-zinc-100"
+                          />
+                          Loop
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewingClip(null)}
+                          className="text-zinc-400 hover:text-zinc-100"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="max-h-[460px] overflow-y-auto p-4 space-y-1.5">

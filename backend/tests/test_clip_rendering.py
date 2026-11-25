@@ -78,3 +78,29 @@ def test_generate_ass_and_render_vertical_mp4(tmp_path: Path):
     assert meta.width == 1080
     assert meta.height == 1920
     assert 2.5 <= meta.duration <= 3.5
+
+
+def test_render_custom_ratio_zoom_pan_blur(tmp_path: Path):
+    source_mp4 = _create_sample_mp4(tmp_path / "source.mp4")
+    output_mp4 = tmp_path / "custom_4_5_blur.mp4"
+
+    render_clip_mp4(
+        source_video=source_mp4,
+        output_path=output_mp4,
+        start_time=0.0,
+        end_time=2.0,
+        aspect_ratio="4:5",
+        ratio_w=4,
+        ratio_h=5,
+        zoom=1.5,
+        pan_x=-10.0,
+        pan_y=5.0,
+        bg_mode="blur",
+        preview=True,
+        prefer_hw_encoding=False,
+    )
+    assert output_mp4.is_file() and output_mp4.stat().st_size > 2000
+    meta = probe_video(output_mp4)
+    assert meta.width == 540
+    assert meta.height == 674
+

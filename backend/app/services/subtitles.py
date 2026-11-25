@@ -35,6 +35,8 @@ def generate_ass_subtitles(
     font_size: int = 58,
     primary_hex: str = "#FFFFFF",
     position: str = "bottom",
+    caption_x: float = 50.0,
+    caption_y: float = 82.0,
 ) -> Path:
     """Generate an ASS subtitle file for a trimmed clip."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -45,8 +47,15 @@ def generate_ass_subtitles(
     shadow = 1 if style_name != "minimal" else 0
     bold = -1 if style_name in {"bold_keywords", "karaoke"} else 0
 
+    # Scale font_size proportionally to PlayResY (reference height = 1920)
+    scaled_font_size = max(14, int(round(font_size * (play_res_y / 1920.0))))
+
     alignment = {"bottom": 2, "middle": 5, "top": 8}.get(position, 2)
     margin_v = int(play_res_y * 0.12) if position != "middle" else 20
+
+    pos_x = int(round(play_res_x * max(5.0, min(95.0, caption_x)) / 100.0))
+    pos_y = int(round(play_res_y * max(5.0, min(95.0, caption_y)) / 100.0))
+    pos_tag = f"{{\\an5\\pos({pos_x},{pos_y})}}"
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -57,7 +66,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,{font_size},{primary_color},{highlight_color},&H00000000,&H64000000,{bold},0,0,0,100,100,0,0,1,{outline},{shadow},{alignment},60,60,{margin_v},1
+Style: Default,Arial,{scaled_font_size},{primary_color},{highlight_color},&H00000000,&H64000000,{bold},0,0,0,100,100,0,0,1,{outline},{shadow},{alignment},60,60,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -94,7 +103,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             line_text = text
 
         events.append(
-            f"Dialogue: 0,{_format_ass_time(rel_start)},{_format_ass_time(rel_end)},Default,,0,0,0,,{line_text}"
+            f"Dialogue: 0,{_format_ass_time(rel_start)},{_format_ass_time(rel_end)},Default,,0,0,0,,{pos_tag}{line_text}"
         )
 
     output_path.write_text(header + "\n".join(events) + "\n", encoding="utf-8")
