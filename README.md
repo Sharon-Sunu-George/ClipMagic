@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="frontend/public/logo.png" alt="ClipMagic Logo" width="72" height="72" />
+  <img src="frontend/public/favicon.svg" alt="ClipMagic Logo" width="64" height="64" />
   <h1>ClipMagic</h1>
   <p><strong>A local-first AI video clipping studio for converting long-form videos into short-form clips.</strong></p>
   <p>
