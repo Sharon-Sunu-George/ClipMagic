@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Film, Plus, Trash2 } from 'lucide-react'
-import { api } from '../lib/api'
+import { api, apiUrl } from '../lib/api'
 import type { Project } from '../types/api'
 
 export function ProjectsPage() {
@@ -64,7 +64,7 @@ export function ProjectsPage() {
                 <div className="aspect-video w-full bg-zinc-900">
                   {p.thumbnail_path ? (
                     <img
-                      src={`/api/projects/${p.id}/thumbnail`}
+                      src={apiUrl(`/projects/${p.id}/thumbnail`)}
                       alt={p.name}
                       className="h-full w-full object-cover"
                     />

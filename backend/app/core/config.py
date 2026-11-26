@@ -1,11 +1,30 @@
 import os
 import shutil
+import sys
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _default_data_dir() -> Path:
+    env_dir = os.environ.get("CLIPMAGIC_DATA_DIR")
+    if env_dir:
+        return Path(env_dir)
+    if getattr(sys, "frozen", False):
+        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(appdata) / "ClipMagic"
+    return Path(__file__).resolve().parents[3]
+
+
 def find_binary(name: str) -> str | None:
-    """Locate ffmpeg/ffprobe/nvidia-smi on PATH or common Windows WinGet install locations."""
+    """Locate ffmpeg/ffprobe/nvidia-smi on PATH, bundled PyInstaller dir, or WinGet."""
+    # Check bundled directories first in frozen desktop builds
+    exe_dir = Path(sys.executable).resolve().parent
+    meipass = Path(getattr(sys, "_MEIPASS", exe_dir))
+    for base in (exe_dir, exe_dir / "ffmpeg", meipass, meipass / "ffmpeg"):
+        bundled = base / f"{name}.exe"
+        if bundled.is_file():
+            return str(bundled)
+
     found = shutil.which(name)
     if found:
         return found
@@ -34,7 +53,7 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8000
 
-    BASE_DIR: Path = Path(__file__).resolve().parents[3]
+    BASE_DIR: Path = _default_data_dir()
     STORAGE_DIR: Path = BASE_DIR / "storage"
     UPLOADS_DIR: Path = STORAGE_DIR / "uploads"
     THUMBNAILS_DIR: Path = STORAGE_DIR / "thumbnails"
@@ -46,6 +65,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = [
         "http://127.0.0.1:5173",
         "http://localhost:5173",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
     ]
 
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"

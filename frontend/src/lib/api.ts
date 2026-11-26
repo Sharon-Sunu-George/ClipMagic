@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core'
 import type {
   AppSettings,
   ClipExportPayload,
@@ -13,8 +14,36 @@ import type {
   UploadResponse,
 } from '../types/api'
 
+export interface BackendStatus {
+  ready: boolean
+  url: string
+  error: string | null
+}
+
+let backendBaseUrl = ''
+
+export function isTauriDesktop(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+export async function initBackendConnection(): Promise<BackendStatus> {
+  if (!isTauriDesktop()) {
+    return { ready: true, url: '', error: null }
+  }
+  const status = await invoke<BackendStatus>('get_backend_status')
+  if (status.url) {
+    backendBaseUrl = status.url.replace(/\/+$/, '')
+  }
+  return status
+}
+
+export function apiUrl(path: string): string {
+  const normalized = path.startsWith('/') ? path : `/${path}`
+  return backendBaseUrl ? `${backendBaseUrl}/api${normalized}` : `/api${normalized}`
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(apiUrl(path), {
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),
@@ -42,7 +71,7 @@ export const api = {
     if (name.trim()) formData.append('name', name.trim())
     formData.append('category', category)
 
-    const response = await fetch('/api/projects/upload', {
+    const response = await fetch(apiUrl('/projects/upload'), {
       method: 'POST',
       body: formData,
     })
@@ -61,7 +90,7 @@ export const api = {
     onUpdate: (job: JobItem) => void,
     onError?: () => void,
   ): (() => void) => {
-    const es = new EventSource(`/api/jobs/${jobId}/events`)
+    const es = new EventSource(apiUrl(`/jobs/${jobId}/events`))
     es.onmessage = (event) => {
       try {
         const job = JSON.parse(event.data) as JobItem

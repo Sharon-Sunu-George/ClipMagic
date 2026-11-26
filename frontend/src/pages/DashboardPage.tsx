@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Film, Plus } from 'lucide-react'
-import { api } from '../lib/api'
+import { api, apiUrl } from '../lib/api'
 import type { DashboardStats } from '../types/api'
 
 function formatDuration(seconds: number | null): string {
@@ -101,7 +101,7 @@ export function DashboardPage() {
                 <div className="aspect-square w-full overflow-hidden rounded-xl border border-zinc-800 bg-[#111113]">
                   {p.thumbnail_path ? (
                     <img
-                      src={`/api/projects/${p.id}/thumbnail`}
+                      src={apiUrl(`/projects/${p.id}/thumbnail`)}
                       alt={p.name}
                       className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                     />

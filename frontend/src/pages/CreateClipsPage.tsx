@@ -24,7 +24,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react'
-import { api } from '../lib/api'
+import { api, apiUrl } from '../lib/api'
 import type {
   ClipSuggestion,
   JobItem,
@@ -1298,7 +1298,7 @@ export function CreateClipsPage() {
               {bgMode === 'blur' && (
                 <video
                   ref={blurVideoRef}
-                  src={`/api/projects/${project.id}/video`}
+                  src={apiUrl(`/projects/${project.id}/video`)}
                   muted
                   playsInline
                   className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-75 blur-2xl"
@@ -1307,7 +1307,7 @@ export function CreateClipsPage() {
               <video
                 ref={videoRef}
                 key={`editor-${project.id}-${editingClip.id}`}
-                src={`/api/projects/${project.id}/video`}
+                src={apiUrl(`/projects/${project.id}/video`)}
                 muted={isMuted}
                 playsInline
                 preload="auto"
@@ -1887,7 +1887,7 @@ export function CreateClipsPage() {
                     <video
                       ref={videoRef}
                       key={project.id}
-                      src={`/api/projects/${project.id}/video`}
+                      src={apiUrl(`/projects/${project.id}/video`)}
                       controls
                       onTimeUpdate={(e) => handleVideoTimeUpdate(e.currentTarget.currentTime)}
                       className="aspect-video max-h-[460px] w-full"

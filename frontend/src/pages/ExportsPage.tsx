@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Download, FolderOpen, Play, Trash2 } from 'lucide-react'
-import { api } from '../lib/api'
+import { api, apiUrl } from '../lib/api'
 import type { ExportItem } from '../types/api'
 
 function formatBytes(bytes: number | null): string {
@@ -65,7 +65,7 @@ export function ExportsPage() {
           </div>
           <video
             key={previewId}
-            src={`/api/exports/${previewId}/video`}
+            src={apiUrl(`/exports/${previewId}/video`)}
             controls
             autoPlay
             className="mx-auto max-h-[520px] rounded-lg bg-black"
@@ -122,7 +122,7 @@ export function ExportsPage() {
                       Preview
                     </button>
                     <a
-                      href={`/api/exports/${exp.id}/video`}
+                      href={apiUrl(`/exports/${exp.id}/video`)}
                       download={`clipmagic_export_${exp.id}_${exp.preset}.mp4`}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-950 hover:bg-white"
                     >

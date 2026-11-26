@@ -1,10 +1,18 @@
 # Python & Virtual Environment
 backend/.venv/
+backend/build/
+backend/dist/
+backend/*.spec
 **/__pycache__/
 *.py[cod]
 *.pyo
 .pytest_cache/
 .coverage
+
+# Tauri & Rust Build
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/
+frontend/src-tauri/gen/
 
 # Node & Frontend Build
 frontend/node_modules/
@@ -23,7 +31,25 @@ storage/
 .env.*
 !.env.example
 
+# Logs & AI Model Caches
+*.log
+logs/
+models/
+.cache/
+
 # IDE & OS
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Logs & Model Caches
+*.log
+logs/
+models/
+.cache/
+
+# Logs & Local AI Model Caches
+*.log
+logs/
+models/
+.cache/
