@@ -53,3 +53,9 @@ models/
 logs/
 models/
 .cache/
+
+# Logs & Local AI Model Caches
+*.log
+logs/
+models/
+.cache/

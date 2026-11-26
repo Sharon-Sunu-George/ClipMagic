@@ -49,12 +49,6 @@ cd ..\frontend
 npm run build
 ```
 
-If modifying Rust/Tauri files in `frontend/src-tauri`, also run:
-```powershell
-cd frontend\src-tauri
-cargo check
-```
-
 ## Guidelines
 - Keep API changes backwards-compatible with existing endpoints.
 - Never commit `.env`, SQLite databases (`*.db`), uploaded videos, exported clips, or `node_modules`/`.venv` artifacts.
